@@ -1,5 +1,57 @@
 #!/bin/bash
 
+function getLightdmUser() {
+    xorg_pid=$(pidof -s /usr/sbin/lightdm)
+    test -n "$xorg_pid" || exit 1
+    dm_pid=$(ps -eo pid,ppid,args | \
+    awk -v xorg_pid=$xorg_pid '$1 == xorg_pid {print $2}')
+    pid_list="$(ps -eo pid,ppid,cmd | \
+    awk -v dm_pid=$dm_pid '$2 == dm_pid {if (matchnr == 0) '\
+'{ printf "%s%d ","$2 == ",$1; matchnr++;} '\
+'else printf "%s%d ","|| $2 == ",$1;}')"
+    ps -eo pid,ppid,user,cmd | awk "$pid_list"'{print $3}'
+}
+
+function checkDomainCertsFingerprints() {
+    errorCount=0
+    for key in "${!FINGERPRINTS[@]}"; do
+        ${OPENSSL_BIN} s_client -servername ${key} -connect ${key}:443 2>&1 </dev/null | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' >/tmp/certificate.pem
+
+        detected_fingerprint=$(openssl x509 -noout -in /tmp/certificate.pem -fingerprint -sha256 | cut -d "=" -f2)
+        if [[ "${detected_fingerprint}" != "${FINGERPRINTS[$key]}" ]]; then
+            let "errorCount=errorCount+1"
+        fi
+    done
+
+    if [[ ${errorCount} -eq 0 ]]; then
+        if [[ ${USER} == ${user} ]]; then
+            ${ZENITY_BIN} --notification --window-icon="face-cool" --text="Integrity of your connection was verified\nThe fingerprints used to check SSL certificates are all valid."
+        else
+            su ${user} -c "${ZENITY_BIN} --notification --window-icon=\"face-cool\" --text=\"Integrity of your connection was verified\nThe fingerprints used to check SSL certificates are all valid.\""
+        fi
+    else
+        ${ZENITY_BIN} --warning --width=400 --window-icon="dialog-error" --text="ALERT!
+
+At least one of the certificates checked has a different fingerprint! You might be subject to a MITM attack!\nConsider using a full VPN to protect your privacy!"# --display=:0
+    fi
+}
+
+function checkIfUpLink() {
+    if [[ ! -e /etc/network/if-up.d/check-certificates-mitm ]]; then
+        SCRIPTPATH="$( cd "$(dirname "$0")" ; pwd -P )"
+        ${ZENITY_BIN} --warning --width=400 --window-icon="dialog-warning" --text="
+This check is *not* automatically run when you connect to the internet.
+If you want to check the integrity of your connection whenever you go online, make sure you run this command before you go online the next time:
+
+sudo ln -s ${SCRIPTPATH}/check-certificates-mitm.sh /etc/network/if-up.d/check-certificates-mitm" --display=:0
+    fi
+}
+
+function finish {
+  rm -rf /tmp/certificate.pem
+}
+trap finish EXIT
+
 user=$(getLightdmUser)
 # HINT: If you are not using LightDM you can either hard code your user or extend this script :)
 #declare user=dennisw
@@ -32,62 +84,9 @@ while read line || [[ -n $line ]]; do
     fi
 done < <(jq -r "to_entries|map(\"\(.key)=\(.value)\")|.[]" ~/certificate-fingerprints.json)
 
-function checkDomainCertsFingerprints() {
-    errorCount=0
-    for key in "${!FINGERPRINTS[@]}"; do 
-        ${OPENSSL_BIN} s_client -servername ${key} -connect ${key}:443 2>&1 </dev/null | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' >/tmp/certificate.pem
-        
-        detected_fingerprint=$(openssl x509 -noout -in /tmp/certificate.pem -fingerprint -sha256 | cut -d "=" -f2)
-        if [[ "${detected_fingerprint}" != "${FINGERPRINTS[$key]}" ]]; then
-            let "errorCount=errorCount+1"
-        fi
-    done
-
-    if [[ ${errorCount} -eq 0 ]]; then
-        if [[ ${USER} == ${user} ]]; then
-            ${ZENITY_BIN} --notification --window-icon="face-cool" --text="Integrity of your connection was verified\nThe fingerprints used to check SSL certificates are all valid."
-        else        
-            su ${user} -c "${ZENITY_BIN} --notification --window-icon=\"face-cool\" --text=\"Integrity of your connection was verified\nThe fingerprints used to check SSL certificates are all valid.\""
-        fi
-    else
-        ${ZENITY_BIN} --warning --width=400 --window-icon="dialog-error" --text="ALERT!
-
-At least one of the certificates checked has a different fingerprint! You might be subject to a MITM attack!\nConsider using a full VPN to protect your privacy!"# --display=:0
-    fi
-}
-
-function checkIfUpLink() {
-    if [[ ! -e /etc/network/if-up.d/check-certificates-mitm ]]; then
-        SCRIPTPATH="$( cd "$(dirname "$0")" ; pwd -P )"
-        ${ZENITY_BIN} --warning --width=400 --window-icon="dialog-warning" --text="
-This check is *not* automatically run when you connect to the internet.
-If you want to check the integrity of your connection whenever you go online, make sure you run this command before you go online the next time:
-
-sudo ln -s ${SCRIPTPATH}/check-certificates-mitm.sh /etc/network/if-up.d/check-certificates-mitm" --display=:0
-    fi
-}
-
-function getLightdmUser() {
-    xorg_pid=$(pidof -s /usr/sbin/lightdm)
-    test -n "$xorg_pid" || exit 1
-    dm_pid=$(ps -eo pid,ppid,args | \
-    awk -v xorg_pid=$xorg_pid '$1 == xorg_pid {print $2}')
-    pid_list="$(ps -eo pid,ppid,cmd | \
-    awk -v dm_pid=$dm_pid '$2 == dm_pid {if (matchnr == 0) '\
-'{ printf "%s%d ","$2 == ",$1; matchnr++;} '\
-'else printf "%s%d ","|| $2 == ",$1;}')"
-    ps -eo pid,ppid,user,cmd | awk "$pid_list"'{print $3}'
-}
-
-function finish {
-  rm -rf /tmp/certificate.pem
-}
-trap finish EXIT
-
 function main() {
     checkDomainCertsFingerprints 
     checkIfUpLink
 }
 
-getLightdmUser
 main
