@@ -72,7 +72,7 @@ fi
 OPENSSL_BIN=$(which openssl)
 ZENITY_BIN=$(which zenity)
 
-# My webserver fetches the SHA256 certificate fingerprints from linkedin.com, grc.com and google.com. See create-certs-fingerprints-json.sh 
+# My webserver fetches the SHA256 certificate fingerprints from linkedin.com, grc.com and google.com every hour. See https://github.com/verges-io/connection-integrity/blob/master/create-certs-fingerprints-json.sh.
 curl -s https://verges.io/certificate-fingerprints.json --output ~/certificate-fingerprints.json
 
 declare -A FINGERPRINTS
