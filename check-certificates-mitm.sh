@@ -12,6 +12,13 @@ function getLightdmUser() {
     ps -eo pid,ppid,user,cmd | awk "$pid_list"'{print $3}'
 }
 
+function exitWhenExists() {
+    if pidof -o %PPID -x "check-certificates-mitm.sh" >/dev/null; then
+        echo "check-certificates-mitm.sh is already running"
+        exit 1
+    fi
+}
+
 function checkDomainCertsFingerprints() {
     errorCount=0
     for key in "${!FINGERPRINTS[@]}"; do
@@ -52,6 +59,8 @@ function finish {
 }
 trap finish EXIT
 
+exitWhenExists
+
 user=$(getLightdmUser)
 # HINT: If you are not using LightDM you can either hard code your user or extend this script :)
 #declare user=dennisw
@@ -72,7 +81,7 @@ fi
 OPENSSL_BIN=$(which openssl)
 ZENITY_BIN=$(which zenity)
 
-# My webserver fetches the SHA256 certificate fingerprints from linkedin.com, grc.com and google.com every hour. See https://github.com/verges-io/connection-integrity/blob/master/create-certs-fingerprints-json.sh.
+# My webserver fetches the SHA256 certificate fingerprints from linkedin.com, grc.com and de.wikipedia.org. See create-certs-fingerprints-json.sh 
 curl -s https://verges.io/certificate-fingerprints.json --output ~/certificate-fingerprints.json
 
 declare -A FINGERPRINTS
