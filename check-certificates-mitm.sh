@@ -1,5 +1,7 @@
 #!/bin/bash
 
+declare leaseIdFile="/tmp/dhcp4_lease_${DHCP4_EXPIRY}"
+
 function getLightdmUser() {
     xorg_pid=$(pidof -s /usr/sbin/lightdm)
     test -n "$xorg_pid" || exit 1
@@ -20,6 +22,10 @@ function exitWhenExists() {
 }
 
 function checkDomainCertsFingerprints() {
+    if [[ -z ${DEVICE_IFACE} ]]; then
+        DEVICE_IFACE="unknown"
+    fi
+
     errorCount=0
     for key in "${!FINGERPRINTS[@]}"; do
         ${OPENSSL_BIN} s_client -servername ${key} -connect ${key}:443 2>&1 </dev/null | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' >/tmp/certificate.pem
@@ -32,14 +38,14 @@ function checkDomainCertsFingerprints() {
 
     if [[ ${errorCount} -eq 0 ]]; then
         if [[ ${USER} == ${user} ]]; then
-            ${ZENITY_BIN} --notification --window-icon="face-cool" --text="Integrity of your connection was verified\nThe fingerprints used to check SSL certificates are all valid."
+            ${ZENITY_BIN} --notification --window-icon="face-cool" --text="Integrity of the connection via interface '${DEVICE_IFACE}' was verified\nThe fingerprints used to check SSL certificates are all valid."
         else
-            su ${user} -c "${ZENITY_BIN} --notification --window-icon=\"face-cool\" --text=\"Integrity of your connection was verified\nThe fingerprints used to check SSL certificates are all valid.\""
+            su ${user} -c "${ZENITY_BIN} --notification --window-icon=\"face-cool\" --text=\"Integrity of the connection via interface '${DEVICE_IFACE}' was verified\nThe fingerprints used to check SSL certificates are all valid.\""
         fi
     else
         ${ZENITY_BIN} --warning --width=400 --window-icon="dialog-error" --text="ALERT!
 
-At least one of the certificates checked has a different fingerprint! You might be subject to a MITM attack!\nConsider using a full VPN to protect your privacy!"# --display=:0
+At least one of the certificates checked via the device called '${DEVICE_IFACE}' has a different fingerprint! You might be subject to a MITM attack!\nConsider using a full VPN to protect your privacy!"# --display=:0
     fi
 }
 
@@ -54,12 +60,23 @@ sudo ln -s ${SCRIPTPATH}/check-certificates-mitm.sh /etc/network/if-up.d/check-c
     fi
 }
 
+function preventRunningTwice() {
+    if [[ "${ADDRFAM}" == "inet6" ]] && [[ -f ${leaseIdFile} ]]; then
+        exit 0
+    fi
+}
+
 function finish {
-  rm -rf /tmp/certificate.pem
+    rm /tmp/certificate.pem /tmp/certificate-fingerprints.json || true 2>&1 >/dev/null
+    if [[ "${ADDRFAM}" == "inet6" ]]; then
+        rm /tmp/dhcp4_lease_* || true 2>&1 >/dev/null
+    fi
+
 }
 trap finish EXIT
 
 exitWhenExists
+preventRunningTwice
 
 user=$(getLightdmUser)
 # HINT: If you are not using LightDM you can either hard code your user or extend this script :)
@@ -82,7 +99,7 @@ OPENSSL_BIN=$(which openssl)
 ZENITY_BIN=$(which zenity)
 
 # My webserver fetches the SHA256 certificate fingerprints from linkedin.com, grc.com and de.wikipedia.org. See create-certs-fingerprints-json.sh 
-curl -s https://verges.io/certificate-fingerprints.json --output ~/certificate-fingerprints.json
+curl -s https://verges.io/certificate-fingerprints.json --output /tmp/certificate-fingerprints.json
 
 declare -A FINGERPRINTS
 while read line || [[ -n $line ]]; do
@@ -91,10 +108,14 @@ while read line || [[ -n $line ]]; do
         value=`echo $line | cut -d'=' -f2-`
         FINGERPRINTS["$key"]="$value"
     fi
-done < <(jq -r "to_entries|map(\"\(.key)=\(.value)\")|.[]" ~/certificate-fingerprints.json)
+done < <(jq -r "to_entries|map(\"\(.key)=\(.value)\")|.[]" /tmp/certificate-fingerprints.json)
 
 function main() {
-    checkDomainCertsFingerprints 
+    if [[ "${ADDRFAM}" == "inet" ]]; then
+        touch ${leaseIdFile}
+    fi
+
+    checkDomainCertsFingerprints
     checkIfUpLink
 }
 
