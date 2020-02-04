@@ -6,6 +6,7 @@ if [ "$#" -le 1 ]; then
 fi
 
 domainList=("$@")
+declare -a tmpFiles
 
 # Wait forever until you're back online
 while ! ping -c1 8.8.8.8 &>/dev/null
@@ -20,9 +21,11 @@ function generateJson() {
     for var in "${domainList[@]}"; do
         if ping -c1 -W1 ${var} &> /dev/null
         then
+            tmpFile=$(mktemp)
+            tmpFiles+=(${tmpFile})
             let "responseCount=responseCount+1"
-            ${OPENSSL_BIN} s_client -servername ${var} -connect ${var}:443 2>&1 </dev/null | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' >/tmp/certificate.pem
-            detected_fingerprint=$(openssl x509 -noout -in /tmp/certificate.pem -fingerprint -sha256 | cut -d "=" -f2)
+            ${OPENSSL_BIN} s_client -servername ${var} -connect ${var}:443 2>&1 </dev/null | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' >${tmpFile}
+            detected_fingerprint=$(openssl x509 -noout -in ${tmpFile} -fingerprint -sha256 | cut -d "=" -f2)
             fingerprintList="${fingerprintList}"", \"${var}\": \"${detected_fingerprint}\""
         fi
     done
@@ -35,7 +38,9 @@ function generateJson() {
 }
 
 function finish {
-  rm -rf /tmp/certificate.pem
+    for rmFile in "${tmpFiles[@]}"; do
+        rm -rf ${rmFile}
+    done
 }
 trap finish EXIT
 
