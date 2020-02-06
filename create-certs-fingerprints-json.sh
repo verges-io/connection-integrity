@@ -24,7 +24,11 @@ function generateJson() {
             tmpFile=$(mktemp)
             tmpFiles+=(${tmpFile})
             let "responseCount=responseCount+1"
-            ${OPENSSL_BIN} s_client -servername ${var} -connect ${var}:443 2>&1 </dev/null | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' >${tmpFile}
+            ${OPENSSL_BIN} s_client -servername ${var} -connect ${var}:443 </dev/null 2>/dev/null | openssl x509 -outform PEM >${tmpFile}
+            if [[ "$?" -ne 0 ]]; then
+                echo "Error loading certificate for '${var}'"
+            fi
+
             detected_fingerprint=$(openssl x509 -noout -in ${tmpFile} -fingerprint -sha256 | cut -d "=" -f2)
             fingerprintList="${fingerprintList}"", \"${var}\": \"${detected_fingerprint}\""
         fi
