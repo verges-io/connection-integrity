@@ -23,7 +23,7 @@ function exitWhenExists() {
 
 function checkDomainCertsFingerprints() {
     if [[ -z ${DEVICE_IFACE} ]]; then
-        DEVICE_IFACE="unknown"
+        DEVICE_IFACE="<UNSPECIFIED>"
     fi
 
     errorCount=0
@@ -32,6 +32,7 @@ function checkDomainCertsFingerprints() {
 
         detected_fingerprint=$(openssl x509 -noout -in /tmp/certificate.pem -fingerprint -sha256 | cut -d "=" -f2)
         if [[ "${detected_fingerprint}" != "${FINGERPRINTS[$key]}" ]]; then
+            echo "Fingerprints for ${key} do not match! :("
             let "errorCount=errorCount+1"
         fi
     done

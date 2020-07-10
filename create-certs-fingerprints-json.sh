@@ -7,13 +7,30 @@ fi
 
 domainList=("$@")
 declare -a tmpFiles
+declare todayLog="/tmp/certcheck-$(date +"%Y-%m-%d")"
 
 # Wait forever until you're back online
-while ! ping -c1 8.8.8.8 &>/dev/null
-        do echo "Ping Fail - `date`"
-done
+if ! ping -c1 8.8.8.8 &>/dev/null; then
+    storeErrorNum 
+fi
 
 OPENSSL_BIN=$(which openssl)
+
+function storeErrornum() {
+    currentErrorNum=$(cat ${todayLog})
+    newErrorNum="$((${currentErrorNum}+1))"
+    echo ${newErrorNum} > ${todayLog}
+}
+
+function sendErrorStats() {
+    if [[ ! -f ${todayLog} ]]; then
+        echo 0 > ${todayLog}
+        yesterdayLog="/tmp/certcheck-$(date +"%Y-%m-%d" -d "yesterday")"
+        local errorNum=$(cat ${yesterdayLog})
+        echo "Errors happened during certificate updates: ${errorNum}"
+        rm ${yesterdayLog}
+    fi
+}
 
 function generateJson() {
     responseCount=0
@@ -26,7 +43,7 @@ function generateJson() {
             let "responseCount=responseCount+1"
             ${OPENSSL_BIN} s_client -servername ${var} -connect ${var}:443 </dev/null 2>/dev/null | openssl x509 -outform PEM >${tmpFile}
             if [[ "$?" -ne 0 ]]; then
-                echo "Error loading certificate for '${var}'"
+                storeErrornum
             fi
 
             detected_fingerprint=$(openssl x509 -noout -in ${tmpFile} -fingerprint -sha256 | cut -d "=" -f2)
@@ -35,7 +52,7 @@ function generateJson() {
     done
 
     if [[ responseCount -le 1 ]]; then
-        echo "ERROR: Unable to connect to at least 2 domains. Exiting."
+        storeErrornum
         exit 2
     fi
     echo "{ "$(echo ${fingerprintList} | sed -r 's/^.{2}//')" }" > /u1/www/websites/verges.io/htdocs/certificate-fingerprints.json
@@ -49,6 +66,7 @@ function finish {
 trap finish EXIT
 
 function main() {
+    sendErrorStats
     generateJson
 }
 
