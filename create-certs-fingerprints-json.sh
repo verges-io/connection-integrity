@@ -11,7 +11,7 @@ declare todayLog="/tmp/certcheck-$(date +"%Y-%m-%d")"
 
 # Wait forever until you're back online
 if ! ping -c1 8.8.8.8 &>/dev/null; then
-    storeErrorNum 
+    storeErrornum 
 fi
 
 OPENSSL_BIN=$(which openssl)
