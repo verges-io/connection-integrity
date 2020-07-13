@@ -9,11 +9,6 @@ domainList=("$@")
 declare -a tmpFiles
 declare todayLog="/tmp/certcheck-$(date +"%Y-%m-%d")"
 
-# Wait forever until you're back online
-if ! ping -c1 8.8.8.8 &>/dev/null; then
-    storeErrornum 
-fi
-
 OPENSSL_BIN=$(which openssl)
 
 function storeErrornum() {
@@ -69,5 +64,10 @@ function main() {
     sendErrorStats
     generateJson
 }
+
+# Wait forever until you're back online
+if ! ping -c1 8.8.8.8 &>/dev/null; then
+    storeErrornum
+fi
 
 main
