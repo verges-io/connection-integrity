@@ -12,15 +12,15 @@ declare todayLog="/tmp/certcheck-$(date +"%Y-%m-%d")"
 OPENSSL_BIN=$(which openssl)
 
 function storeErrornum() {
-    currentErrorNum=$(cat ${todayLog})
+    [[ -f ${todayLog} ]] && currentErrorNum=$(cat ${todayLog}) || currentErrorNum=0
     newErrorNum="$((${currentErrorNum}+1))"
     echo ${newErrorNum} > ${todayLog}
 }
 
 function sendErrorStats() {
-    if [[ ! -f ${todayLog} ]]; then
+    yesterdayLog="/tmp/certcheck-$(date +"%Y-%m-%d" -d "yesterday")"
+    if [[ ! -f ${todayLog} ]] && [[ -f ${yesterdayLog} ]]; then
         echo 0 > ${todayLog}
-        yesterdayLog="/tmp/certcheck-$(date +"%Y-%m-%d" -d "yesterday")"
         local errorNum=$(cat ${yesterdayLog})
         echo "Errors happened during certificate updates: ${errorNum}"
         rm ${yesterdayLog}
@@ -55,7 +55,7 @@ function generateJson() {
 
 function finish {
     for rmFile in "${tmpFiles[@]}"; do
-        rm -rf ${rmFile}
+        [[ -f ${rmFile} ]] && rm -rf ${rmFile}
     done
 }
 trap finish EXIT
