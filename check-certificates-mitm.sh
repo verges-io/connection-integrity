@@ -68,7 +68,7 @@ function preventRunningTwice() {
 }
 
 function finish {
-    rm /tmp/certificate.pem /tmp/certificate-fingerprints.json || true 2>&1 >/dev/null
+    rm -f /tmp/certificate.pem /tmp/certificate-fingerprints.json || true 2>&1 >/dev/null
     if [[ "${ADDRFAM}" == "inet6" ]]; then
         rm /tmp/dhcp4_lease_* || true 2>&1 >/dev/null
     fi
